@@ -54,7 +54,9 @@ tracing-appender = "0.2"
 uuid = { version = "1", features = ["v4", "serde"] }
 
 # HTTP client
-reqwest = { version = "0.12", features = ["json", "stream"] }
+# `default-features = false` drops reqwest's `default-tls` (native-tls → openssl),
+# which fails to link against musl in the cross/static build. Use rustls instead.
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls", "charset", "http2"] }
 
 # Concurrent data structures
 dashmap = "6"
