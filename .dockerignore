@@ -1,0 +1,48 @@
+# Docker build context — keep it lean so `docker build` doesn't ship
+# hundreds of MB of local build artifacts / dependencies to the daemon.
+# Mirrors .gitignore where relevant and adds .git.
+
+# Rust
+target/
+
+# Frontend build state & deps (regenerated inside the image)
+web/node_modules/
+web/.next/
+web/out/
+
+# Built frontend served by Axum (regenerated inside the image from web/)
+static/out/
+
+# Runtime data
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Local docs (migration notes kept out of the repo)
+docs/
+
+# VCS & metadata
+.git/
+.gitignore
+.github/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment / secrets — never send to the build context
+.env
+.env.local
+web/.env.local
+
+# Temporary / log files
+*.tmp
+*.log
+*.err

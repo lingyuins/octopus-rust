@@ -1,0 +1,196 @@
+# Release workflow: build & publish on tag push (`v*`).
+#
+# Triggers:
+#   - Push of a version tag matching `v*` (e.g. `v2.0.0`).
+#   - Manual `workflow_dispatch` (for debugging; produces no Release/tag).
+#
+# Produces:
+#   1. Multi-arch (amd64 + arm64) Docker image pushed to GHCR.
+#   2. Per-arch static-musl binary tarballs attached to the GitHub Release.
+#
+# GHCR auth uses the built-in `GITHUB_TOKEN` — no extra secrets required.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write   # to create the GitHub Release & upload assets
+  packages: write   # to push the image to GHCR
+
+env:
+  # Lowercased owner/repo → GHCR image path, e.g. ghcr.io/lingyuins/octopus-rust
+  IMAGE_NAME: ghcr.io/${{ github.repository }}
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Job A: multi-arch Docker image → GHCR
+  # ---------------------------------------------------------------------------
+  docker-image:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU (arm64 cross-build)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Derive image tags & labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          # `v2.0.0` → tags `2.0.0` and `latest`; on non-tag runs use `sha-<short>`.
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=sha,prefix=sha-,format=short,enable=${{ !startsWith(github.ref, 'refs/tags/v') }}
+
+      - name: Build & push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            APP_VERSION=${{ steps.meta.outputs.version }}
+            GIT_COMMIT=${{ github.sha }}
+            BUILD_TIME=${{ steps.meta.outputs.date }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+
+  # ---------------------------------------------------------------------------
+  # Job B: per-arch static binary tarballs (artifact only)
+  # ---------------------------------------------------------------------------
+  binaries:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            rust_target: x86_64-unknown-linux-musl
+            use_cross: false
+          - arch: arm64
+            rust_target: aarch64-unknown-linux-musl
+            use_cross: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 20 & pnpm
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: corepack enable
+      - run: corepack prepare pnpm@10.22.0 --activate
+
+      - name: Install frontend deps & build
+        working-directory: web
+        env:
+          NEXT_PUBLIC_APP_VERSION: ${{ github.ref_name }}
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          # Copy the static export where the server expects it at runtime.
+          rm -rf ../static/out
+          cp -r out ../static/out
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      # amd64: native musl via apt. arm64: `cross` (Docker-based, no hand-installed toolchain).
+      - name: Install musl tools (amd64 only)
+        if: ${{ !matrix.use_cross }}
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Install cross (arm64 only)
+        if: ${{ matrix.use_cross }}
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Build release binary
+        run: |
+          if [ "${{ matrix.use_cross }}" = "true" ]; then
+            cross build --release --target ${{ matrix.rust_target }}
+          else
+            cargo build --release --target ${{ matrix.rust_target }}
+          fi
+
+      - name: Stage release bundle
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          STAGE="octopus-${VERSION}-linux-${{ matrix.arch }}"
+          mkdir -p "$STAGE"
+          cp target/${{ matrix.rust_target }}/release/octopus "$STAGE/octopus"
+          cp -r static/out "$STAGE/static-out"
+          cp README.md "$STAGE/" 2>/dev/null || true
+          cat > "$STAGE/README.txt" <<EOF
+          Octopus ${VERSION} (linux-${{ matrix.arch }})
+          ============================================
+          This bundle contains:
+            - octopus        : static musl binary (no runtime deps)
+            - static-out/    : built frontend (served by the binary)
+
+          Run:
+            ./octopus start
+          Then open http://localhost:8080
+
+          Note: first run needs a security config. Create data/config.json with
+          "security.encryption_key" or "auth.jwt_secret" set to a random long
+          string, or set the corresponding OCTOPUS_* env vars.
+          EOF
+          tar -czf "$STAGE.tar.gz" "$STAGE"
+          echo "ASSET=$STAGE.tar.gz" >> "$GITHUB_ENV"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ASSET }}
+          path: ${{ env.ASSET }}
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # Job C: attach binary tarballs to the GitHub Release for the tag
+  # ---------------------------------------------------------------------------
+  release:
+    needs: [binaries]
+    runs-on: ubuntu-latest
+    # Only publish a Release on an actual tag run (skip for workflow_dispatch).
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all binary artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: assets/*.tar.gz
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
