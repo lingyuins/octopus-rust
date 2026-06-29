@@ -144,6 +144,7 @@ jobs:
           STAGE="octopus-${VERSION}-linux-${{ matrix.arch }}"
           mkdir -p "$STAGE"
           cp target/${{ matrix.rust_target }}/release/octopus "$STAGE/octopus"
+          mkdir -p "$STAGE/static"
           cp -r static/out "$STAGE/static/out"
           cp README.md "$STAGE/" 2>/dev/null || true
           cat > "$STAGE/README.txt" <<EOF
@@ -151,7 +152,7 @@ jobs:
           ============================================
           This bundle contains:
             - octopus        : static musl binary (no runtime deps)
-            - static-out/    : built frontend (served by the binary)
+            - static/out/   : built frontend (served by the binary)
 
           Run:
             ./octopus start
