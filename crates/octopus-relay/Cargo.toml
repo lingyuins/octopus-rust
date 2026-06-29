@@ -1,0 +1,25 @@
+[package]
+name = "octopus-relay"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+octopus-core.workspace = true
+octopus-db.workspace = true
+octopus-transformer.workspace = true
+reqwest.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+futures.workspace = true
+futures-util.workspace = true
+bytes.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+pin-project-lite.workspace = true
+rand.workspace = true
+# Used for `Lazy` statics in circuit breaker, semantic cache, and runtime state
+once_cell.workspace = true

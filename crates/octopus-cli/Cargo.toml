@@ -1,0 +1,26 @@
+[package]
+name = "octopus-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "octopus"
+path = "src/main.rs"
+
+[dependencies]
+octopus-core.workspace = true
+octopus-db.workspace = true
+octopus-server.workspace = true
+octopus-relay.workspace = true
+octopus-transformer.workspace = true
+octopus-site.workspace = true
+octopus-hub.workspace = true
+octopus-task.workspace = true
+clap.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tracing-appender.workspace = true
+anyhow.workspace = true

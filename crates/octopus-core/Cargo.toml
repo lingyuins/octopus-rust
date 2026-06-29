@@ -1,0 +1,27 @@
+[package]
+name = "octopus-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+figment.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+regex.workspace = true
+url.workspace = true
+once_cell.workspace = true
+hex.workspace = true
+ring.workspace = true
+# Referenced by AppError (#[from]) and User password hashing
+sqlx.workspace = true
+reqwest.workspace = true
+jsonwebtoken.workspace = true
+argon2.workspace = true
+# Provides `OsRng` for `password_hash::SaltString::generate` in user.rs
+rand.workspace = true

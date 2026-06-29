@@ -1,0 +1,19 @@
+[package]
+name = "octopus-task"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+octopus-core.workspace = true
+octopus-db.workspace = true
+octopus-site.workspace = true
+octopus-hub.workspace = true
+octopus-relay.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+chrono.workspace = true
+dashmap.workspace = true
+# Used for the `OnceCell` holding the task scheduler handle
+once_cell.workspace = true
