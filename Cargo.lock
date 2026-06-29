@@ -1361,7 +1361,7 @@ dependencies = [
 
 [[package]]
 name = "octopus-cli"
-version = "2.0.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -1381,7 +1381,7 @@ dependencies = [
 
 [[package]]
 name = "octopus-core"
-version = "2.0.0"
+version = "0.0.1"
 dependencies = [
  "argon2",
  "chrono",
@@ -1404,7 +1404,7 @@ dependencies = [
 
 [[package]]
 name = "octopus-db"
-version = "2.0.0"
+version = "0.0.1"
 dependencies = [
  "chrono",
  "dashmap",
@@ -1421,7 +1421,7 @@ dependencies = [
 
 [[package]]
 name = "octopus-hub"
-version = "2.0.0"
+version = "0.0.1"
 dependencies = [
  "chrono",
  "octopus-core",
@@ -1435,7 +1435,7 @@ dependencies = [
 
 [[package]]
 name = "octopus-relay"
-version = "2.0.0"
+version = "0.0.1"
 dependencies = [
  "bytes",
  "chrono",
@@ -1457,7 +1457,7 @@ dependencies = [
 
 [[package]]
 name = "octopus-server"
-version = "2.0.0"
+version = "0.0.1"
 dependencies = [
  "axum",
  "bytes",
@@ -1479,7 +1479,7 @@ dependencies = [
 
 [[package]]
 name = "octopus-site"
-version = "2.0.0"
+version = "0.0.1"
 dependencies = [
  "chrono",
  "octopus-core",
@@ -1494,7 +1494,7 @@ dependencies = [
 
 [[package]]
 name = "octopus-task"
-version = "2.0.0"
+version = "0.0.1"
 dependencies = [
  "chrono",
  "dashmap",
@@ -1510,7 +1510,7 @@ dependencies = [
 
 [[package]]
 name = "octopus-transformer"
-version = "2.0.0"
+version = "0.0.1"
 dependencies = [
  "octopus-core",
  "regex",
