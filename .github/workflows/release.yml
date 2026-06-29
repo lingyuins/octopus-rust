@@ -111,7 +111,9 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm build
           # Copy the static export where the server expects it at runtime.
+          # `static/out` is gitignored, so the dir may not exist in a fresh checkout.
           rm -rf ../static/out
+          mkdir -p ../static
           cp -r out ../static/out
 
       - name: Install Rust (stable)
@@ -142,7 +144,7 @@ jobs:
           STAGE="octopus-${VERSION}-linux-${{ matrix.arch }}"
           mkdir -p "$STAGE"
           cp target/${{ matrix.rust_target }}/release/octopus "$STAGE/octopus"
-          cp -r static/out "$STAGE/static-out"
+          cp -r static/out "$STAGE/static/out"
           cp README.md "$STAGE/" 2>/dev/null || true
           cat > "$STAGE/README.txt" <<EOF
           Octopus ${VERSION} (linux-${{ matrix.arch }})

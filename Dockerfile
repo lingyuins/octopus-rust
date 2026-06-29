@@ -24,7 +24,7 @@ RUN NEXT_PUBLIC_APP_VERSION="${APP_VERSION}" pnpm build
 # =============================================================================
 # Build stage for Rust binary
 # =============================================================================
-FROM --platform=$BUILDPLATFORM rust:1.85-alpine AS rust-builder
+FROM --platform=$BUILDPLATFORM rust:1-alpine AS rust-builder
 
 WORKDIR /build
 
@@ -100,6 +100,9 @@ WORKDIR /app
 
 # Copy binary from builder
 COPY --from=rust-builder /usr/local/bin/octopus .
+
+# Copy frontend build output (server serves it from static/out at runtime)
+COPY --from=rust-builder /build/static/out ./static/out
 
 # Create data directory
 RUN mkdir -p /app/data && chown -R octopus:octopus /app
