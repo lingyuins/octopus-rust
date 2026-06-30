@@ -17,13 +17,9 @@ pub async fn build_app() -> Result<Router, octopus_core::error::AppError> {
     // CORS layer
     let cors = CorsLayer::permissive();
 
-    // API routes
+    // API routes (auth required)
     let api_routes = Router::new()
-        // Bootstrap
-        .route("/api/v1/bootstrap/status", get(handlers::bootstrap::status))
-        .route("/api/v1/bootstrap/create", post(handlers::bootstrap::create))
-        // Auth
-        .route("/api/v1/auth/login", post(handlers::auth::login))
+        // Auth — everything except login (which is public above)
         .route("/api/v1/auth/logout", post(handlers::auth::logout))
         .route("/api/v1/auth/refresh", post(handlers::auth::refresh))
         .route("/api/v1/auth/change-password", put(handlers::auth::change_password))
@@ -105,11 +101,9 @@ pub async fn build_app() -> Result<Router, octopus_core::error::AppError> {
         // Update
         .route("/api/v1/update/check", get(handlers::update::check))
         .route("/api/v1/update/apply", post(handlers::update::apply))
-        // WebAuthn
+        // WebAuthn (register & credential management require auth; auth/begin & auth/finish are public, see public_routes)
         .route("/api/v1/webauthn/register/begin", post(handlers::webauthn::register_begin))
         .route("/api/v1/webauthn/register/finish", post(handlers::webauthn::register_finish))
-        .route("/api/v1/webauthn/auth/begin", post(handlers::webauthn::auth_begin))
-        .route("/api/v1/webauthn/auth/finish", post(handlers::webauthn::auth_finish))
         .route("/api/v1/webauthn/credentials", get(handlers::webauthn::list_credentials))
         .route("/api/v1/webauthn/credentials/:id", delete(handlers::webauthn::delete_credential))
         // Model
@@ -160,12 +154,23 @@ pub async fn build_app() -> Result<Router, octopus_core::error::AppError> {
         // DBMigration
         .route("/api/v1/db-migration/status", get(handlers::db_migration::status))
         .route("/api/v1/db-migration/migrate", post(handlers::db_migration::migrate))
-        // Verification
-        .route("/api/v1/verification/send", post(handlers::verification::send))
-        .route("/api/v1/verification/verify", post(handlers::verification::verify))
         .layer(axum_middleware::from_fn(middleware::auth::auth_middleware))
         // Management write audit
         .layer(axum_middleware::from_fn(middleware::audit::audit_middleware));
+
+    // Public routes — no auth required (login, bootstrap, verification, passkey login)
+    let public_routes = Router::new()
+        // Bootstrap (first-run setup, must work before any user exists)
+        .route("/api/v1/bootstrap/status", get(handlers::bootstrap::status))
+        .route("/api/v1/bootstrap/create", post(handlers::bootstrap::create))
+        // Auth login (exchanges credentials for a JWT; refresh/logout stay protected)
+        .route("/api/v1/auth/login", post(handlers::auth::login))
+        // Verification (email/code send & verify, used during signup flows)
+        .route("/api/v1/verification/send", post(handlers::verification::send))
+        .route("/api/v1/verification/verify", post(handlers::verification::verify))
+        // WebAuthn login (passkey authentication begins unauthenticated)
+        .route("/api/v1/webauthn/auth/begin", post(handlers::webauthn::auth_begin))
+        .route("/api/v1/webauthn/auth/finish", post(handlers::webauthn::auth_finish));
 
     // Relay routes (API key auth, no management auth)
     let relay_routes = Router::new()
@@ -177,6 +182,7 @@ pub async fn build_app() -> Result<Router, octopus_core::error::AppError> {
 
     // Combine all routes
     let app = Router::new()
+        .merge(public_routes)
         .merge(api_routes)
         .merge(relay_routes)
         // Static files for frontend. Serves static/out, falls back to web/out,

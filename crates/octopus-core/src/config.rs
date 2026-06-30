@@ -207,7 +207,7 @@ impl AppConfig {
             .merge(Json::file(&config_path))
             .merge(Env::prefixed("OCTOPUS_").split("_"));
 
-        // If config file doesn't exist, create default
+        // If config file doesn't exist, create one with freshly generated secrets
         if !config_path.exists() {
             tracing::info!("Config file not found, creating default config at {:?}", config_path);
 
@@ -220,7 +220,9 @@ impl AppConfig {
                 })?;
             }
 
-            let default_config = AppConfig::default();
+            let mut default_config = AppConfig::default();
+            default_config.security.encryption_key = generate_random_hex(32);
+            default_config.auth.jwt_secret = generate_random_hex(48);
             let json = serde_json::to_string_pretty(&default_config)?;
             std::fs::write(&config_path, json).map_err(|e| {
                 crate::error::AppError::Config(format!(
@@ -229,6 +231,7 @@ impl AppConfig {
                 ))
             })?;
 
+            tracing::info!("Generated security.encryption_key and auth.jwt_secret in config file");
             return Ok(default_config);
         }
 
@@ -257,4 +260,19 @@ impl AppConfig {
     pub fn default_database_path() -> PathBuf {
         PathBuf::from(Self::data_dir()).join(DEFAULT_DB_FILE)
     }
+}
+
+/// Generate `n` random bytes and return them as a lowercase hex string.
+///
+/// Uses `ring::rand` for cryptographic randomness. Used to auto-generate the
+/// encryption key and JWT secret on first run so the server can boot without
+/// manual configuration (the values are persisted to `config.json` and can be
+/// overridden via `OCTOPUS_*` env vars).
+fn generate_random_hex(n: usize) -> String {
+    use ring::rand::SecureRandom;
+    let rng = ring::rand::SystemRandom::new();
+    let mut bytes = vec![0u8; n];
+    // SystemRandom almost never fails; panic is acceptable here.
+    rng.fill(&mut bytes).expect("ring SystemRandom failed");
+    hex::encode(bytes)
 }
