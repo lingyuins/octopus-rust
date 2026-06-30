@@ -208,9 +208,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download all binary artifacts
+      - name: Download binary artifacts
         uses: actions/download-artifact@v4
         with:
+          # Only fetch our release bundles — skip unrelated artifacts (e.g. the
+          # `.dockerbuild` build log produced by buildx) that download-artifact
+          # would otherwise try to pull in with `merge-multiple` + no pattern.
+          pattern: octopus-*
           path: assets
           merge-multiple: true
 
