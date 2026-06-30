@@ -6,7 +6,8 @@
 #
 # Produces:
 #   1. Multi-arch (amd64 + arm64) Docker image pushed to GHCR.
-#   2. Per-arch static-musl binary tarballs attached to the GitHub Release.
+#   2. Per-platform binary bundles attached to the GitHub Release:
+#      static-musl tarballs for Linux (amd64/arm64) and a zip for Windows (amd64).
 #
 # GHCR auth uses the built-in `GITHUB_TOKEN` — no extra secrets required.
 
@@ -81,17 +82,23 @@ jobs:
   # Job B: per-arch static binary tarballs (artifact only)
   # ---------------------------------------------------------------------------
   binaries:
-    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         include:
-          - arch: amd64
+          - os: ubuntu-latest
+            arch: amd64
             rust_target: x86_64-unknown-linux-musl
             use_cross: false
-          - arch: arm64
+          - os: ubuntu-latest
+            arch: arm64
             rust_target: aarch64-unknown-linux-musl
             use_cross: true
+          - os: windows-latest
+            arch: amd64
+            rust_target: x86_64-pc-windows-msvc
+            use_cross: false
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -105,6 +112,7 @@ jobs:
 
       - name: Install frontend deps & build
         working-directory: web
+        shell: bash
         env:
           NEXT_PUBLIC_APP_VERSION: ${{ github.ref_name }}
         run: |
@@ -121,16 +129,18 @@ jobs:
         with:
           targets: ${{ matrix.rust_target }}
 
-      # amd64: native musl via apt. arm64: `cross` (Docker-based, no hand-installed toolchain).
-      - name: Install musl tools (amd64 only)
-        if: ${{ !matrix.use_cross }}
+      # Linux/amd64: native musl via apt. Linux/arm64: `cross` (Docker-based).
+      # Windows/amd64: MSVC toolchain is preinstalled on windows-latest — nothing to add.
+      - name: Install musl tools (linux/amd64 only)
+        if: ${{ matrix.os == 'ubuntu-latest' && !matrix.use_cross }}
         run: sudo apt-get update && sudo apt-get install -y musl-tools
 
-      - name: Install cross (arm64 only)
-        if: ${{ matrix.use_cross }}
+      - name: Install cross (linux/arm64 only)
+        if: ${{ matrix.os == 'ubuntu-latest' && matrix.use_cross }}
         run: cargo install cross --git https://github.com/cross-rs/cross
 
       - name: Build release binary
+        shell: bash
         run: |
           if [ "${{ matrix.use_cross }}" = "true" ]; then
             cross build --release --target ${{ matrix.rust_target }}
@@ -139,31 +149,45 @@ jobs:
           fi
 
       - name: Stage release bundle
+        shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          STAGE="octopus-${VERSION}-linux-${{ matrix.arch }}"
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            OS_NAME="windows"
+            BIN="octopus.exe"
+            STAGE="octopus-${VERSION}-windows-${{ matrix.arch }}"
+          else
+            OS_NAME="linux"
+            BIN="octopus"
+            STAGE="octopus-${VERSION}-linux-${{ matrix.arch }}"
+          fi
           mkdir -p "$STAGE"
-          cp target/${{ matrix.rust_target }}/release/octopus "$STAGE/octopus"
+          cp "target/${{ matrix.rust_target }}/release/$BIN" "$STAGE/$BIN"
           mkdir -p "$STAGE/static"
           cp -r static/out "$STAGE/static/out"
           cp README.md "$STAGE/" 2>/dev/null || true
           cat > "$STAGE/README.txt" <<EOF
-          Octopus ${VERSION} (linux-${{ matrix.arch }})
+          Octopus ${VERSION} (${OS_NAME}-${{ matrix.arch }})
           ============================================
           This bundle contains:
-            - octopus        : static musl binary (no runtime deps)
+            - ${BIN}        : release binary
             - static/out/   : built frontend (served by the binary)
 
           Run:
-            ./octopus start
+            ./${BIN} start
           Then open http://localhost:8080
 
           Note: first run needs a security config. Create data/config.json with
           "security.encryption_key" or "auth.jwt_secret" set to a random long
           string, or set the corresponding OCTOPUS_* env vars.
           EOF
-          tar -czf "$STAGE.tar.gz" "$STAGE"
-          echo "ASSET=$STAGE.tar.gz" >> "$GITHUB_ENV"
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            7z a "$STAGE.zip" "$STAGE"
+            echo "ASSET=$STAGE.zip" >> "$GITHUB_ENV"
+          else
+            tar -czf "$STAGE.tar.gz" "$STAGE"
+            echo "ASSET=$STAGE.tar.gz" >> "$GITHUB_ENV"
+          fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -193,7 +217,9 @@ jobs:
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: assets/*.tar.gz
+          files: |
+            assets/*.tar.gz
+            assets/*.zip
           generate_release_notes: true
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
