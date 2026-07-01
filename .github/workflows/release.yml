@@ -207,6 +207,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history for commit-range log
 
       - name: Download binary artifacts
         uses: actions/download-artifact@v4
@@ -218,12 +220,59 @@ jobs:
           path: assets
           merge-multiple: true
 
+      # Build a concise, commit-driven changelog from the commits between the
+      # previous tag and this one. `generate_release_notes` (below) already
+      # produces GitHub's auto-notes; this `body` is prepended to give a
+      # curated summary that groups fixes/features by conventional-commit type.
+      - name: Generate commit-based release notes
+        id: notes
+        shell: bash
+        run: |
+          # Find the previous tag (the one immediately before the current ref).
+          PREV_TAG=$(git describe --tags --abbrev=0 "${{ github.ref }}^" 2>/dev/null || true)
+          if [ -n "$PREV_TAG" ]; then
+            RANGE="${PREV_TAG}..${{ github.ref_name }}"
+          else
+            RANGE="${{ github.ref_name }}"
+          fi
+
+          {
+            echo "## 更新内容"
+            echo ""
+            # Group by conventional-commit type, preserving original messages.
+            git log "$RANGE" --pretty=format:"%s" --no-merges | \
+            awk '
+              /^fix:/    { sub(/^fix:[[:space:]]*/, "");   print "- 🐛 " $0; next }
+              /^feat:/   { sub(/^feat:[[:space:]]*/, "");  print "- ✨ " $0; next }
+              /^perf:/   { sub(/^perf:[[:space:]]*/, "");  print "- ⚡ " $0; next }
+              /^refactor:/{ sub(/^refactor:[[:space:]]*/, ""); print "- ♻️ " $0; next }
+              /^docs:/   { sub(/^docs:[[:space:]]*/, "");  print "- 📝 " $0; next }
+              /^chore:/  { sub(/^chore:[[:space:]]*/, ""); print "- 🔧 " $0; next }
+              /^build:/  { sub(/^build:[[:space:]]*/, ""); print "- 📦 " $0; next }
+              /^ci:/     { sub(/^ci:[[:space:]]*/, "");    print "- 👷 " $0; next }
+              { print "- " $0 }
+            '
+            echo ""
+            echo "---"
+            echo "完整提交历史: [\`${RANGE}\`](${{ github.server_url }}/${{ github.repository }}/compare/${RANGE})"
+          } > release_notes.md
+
+          # Preserve newlines in the multi-line output.
+          {
+            echo "body<<EOF"
+            cat release_notes.md
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             assets/*.tar.gz
             assets/*.zip
+          body: ${{ steps.notes.outputs.body }}
           generate_release_notes: true
           draft: false
-          prerelease: ${{ contains(github.ref_name, '-') }}
+          # Only treat genuine pre-release suffixes as prerelease.
+          # `-fix`, `-fix2`, … are stable patch tags, NOT pre-releases.
+          prerelease: ${{ contains(github.ref_name, '-alpha') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') || contains(github.ref_name, '-pre') }}
