@@ -203,9 +203,13 @@ impl AppConfig {
             .map(PathBuf::from)
             .unwrap_or(default_config_path);
 
+        // Environment overrides use a DOUBLE underscore as the nesting separator
+        // (e.g. `OCTOPUS_AUTH__JWT_SECRET` -> `auth.jwt_secret`). A single
+        // underscore would split field names that themselves contain underscores
+        // (`jwt_secret` -> `jwt.secret`) and silently fail to match.
         let figment = Figment::new()
             .merge(Json::file(&config_path))
-            .merge(Env::prefixed("OCTOPUS_").split("_"));
+            .merge(Env::prefixed("OCTOPUS_").split("__"));
 
         // If config file doesn't exist, create one with freshly generated secrets
         if !config_path.exists() {
@@ -232,7 +236,19 @@ impl AppConfig {
             })?;
 
             tracing::info!("Generated security.encryption_key and auth.jwt_secret in config file");
-            return Ok(default_config);
+
+            // Re-extract via a fresh figment (the file now exists, so
+            // Json::file reads it) so that OCTOPUS_* env overrides (e.g.
+            // OCTOPUS_DATABASE__PATH) still take effect on first run, rather
+            // than returning the raw defaults that were just written to disk.
+            let config: AppConfig = Figment::new()
+                .merge(Json::file(&config_path))
+                .merge(Env::prefixed("OCTOPUS_").split("__"))
+                .extract()
+                .map_err(|e| {
+                    crate::error::AppError::Config(format!("failed to parse config: {}", e))
+                })?;
+            return Ok(config);
         }
 
         let config: AppConfig = figment.extract().map_err(|e| {

@@ -89,13 +89,18 @@ async fn run_start(config_path: Option<String>) -> anyhow::Result<()> {
     // Start background tasks
     octopus_task::init_tasks().await;
 
-    // Start HTTP server
+    // Start HTTP server. Share the config via Arc so every handler/middleware
+    // reads it from memory instead of re-reading the config file per request.
     let addr = format!("{}:{}", config.server.host, config.server.port);
     tracing::info!("Starting Octopus server on {}", addr);
+    let config = std::sync::Arc::new(config);
 
-    // Graceful shutdown handling
+    // Graceful shutdown: a watch channel lets the main task signal the server
+    // to drain in-flight requests before exit (no hard abort).
+    let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+
     let server_task = tokio::spawn(async move {
-        if let Err(e) = octopus_server::start(&addr).await {
+        if let Err(e) = octopus_server::start(&addr, config, shutdown_rx).await {
             tracing::error!("Server error: {}", e);
         }
     });
@@ -104,15 +109,15 @@ async fn run_start(config_path: Option<String>) -> anyhow::Result<()> {
     tokio::signal::ctrl_c().await?;
     tracing::info!("Shutting down...");
 
-    // Shutdown tasks
+    // Signal the server to drain, then wait for it to finish.
+    let _ = shutdown_tx.send(true);
+    let _ = server_task.await;
+
+    // Shutdown background tasks
     octopus_task::shutdown().await;
 
     // Close database
     octopus_db::close().await?;
-
-    // Cancel server
-    server_task.abort();
-    let _ = server_task.await;
 
     tracing::info!("Octopus stopped");
     Ok(())

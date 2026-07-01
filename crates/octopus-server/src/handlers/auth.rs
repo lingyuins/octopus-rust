@@ -1,4 +1,5 @@
-use axum::{http::StatusCode, Json};
+use std::sync::Arc;
+use axum::{extract::State, http::StatusCode, Json};
 use octopus_db::ops::user as user_ops;
 use octopus_core::model::user::{UserLogin, UserLoginResponse, UserChangePassword, UserChangeUsername};
 use crate::middleware::auth::{generate_token, get_claims, JwtClaims};
@@ -7,6 +8,7 @@ use octopus_core::AppConfig;
 
 /// Login
 pub async fn login(
+    State(config): State<Arc<AppConfig>>,
     Json(req): Json<UserLogin>,
 ) -> Result<(StatusCode, Json<ApiResponse<UserLoginResponse>>), (StatusCode, Json<ApiResponse<()>>)> {
     let user = user_ops::get_user_by_username(&req.username)
@@ -18,7 +20,6 @@ pub async fn login(
         return Err(bad_request("Invalid username or password"));
     }
 
-    let config = AppConfig::load(None).unwrap_or_default();
     let (token, expire_at) = generate_token(
         user.id,
         &user.role,
@@ -36,13 +37,13 @@ pub async fn logout() -> (StatusCode, Json<ApiResponse<()>>) {
 
 /// Refresh token
 pub async fn refresh(
+    State(config): State<Arc<AppConfig>>,
     req: axum::extract::Request,
 ) -> Result<(StatusCode, Json<ApiResponse<UserLoginResponse>>), (StatusCode, Json<ApiResponse<()>>)> {
     let claims = get_claims(&req).ok_or_else(|| bad_request("Unauthorized"))?;
     let user_id = claims.user_id.unwrap_or(0);
     let role = claims.role.as_deref().unwrap_or("admin");
 
-    let config = AppConfig::load(None).unwrap_or_default();
     let (token, expire_at) = generate_token(
         user_id,
         role,

@@ -1,5 +1,6 @@
+use std::sync::Arc;
 use axum::{
-    extract::Request,
+    extract::{Request, State},
     http::{header, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
@@ -18,9 +19,16 @@ pub struct JwtClaims {
     pub iss: Option<String>,
 }
 
-/// JWT authentication middleware
-pub async fn auth_middleware(mut req: Request, next: Next) -> Result<Response, Response> {
-    let config = AppConfig::load(None).unwrap_or_default();
+/// JWT authentication middleware.
+///
+/// Reads the JWT signing secret from the shared `AppConfig` (loaded once at
+/// startup and injected via `axum::State`) instead of re-reading the config
+/// file on every request.
+pub async fn auth_middleware(
+    State(config): State<Arc<AppConfig>>,
+    mut req: Request,
+    next: Next,
+) -> Result<Response, Response> {
     let secret = &config.auth.jwt_secret;
 
     if secret.is_empty() {

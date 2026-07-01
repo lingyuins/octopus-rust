@@ -10,7 +10,10 @@ services:
     environment:
       TZ: "Asia/Shanghai"
       # Secrets are auto-generated on first start (written to data/config.json).
-      # Override here only if you want to pin your own values:
-      # OCTOPUS_AUTH_JWT_SECRET: ""  # persistent JWT signing secret
-      # OCTOPUS_SECURITY_ENCRYPTION_KEY: ""  # AES key for sensitive data at rest
-      # OCTOPUS_SERVER_TRUSTED_PROXIES: "172.17.0.0/16"  # For Docker bridge networks
+      # Override here only if you want to pin your own values. Note the DOUBLE
+      # underscore: it is figment's nesting separator, so OCTOPUS_AUTH__JWT_SECRET
+      # maps to auth.jwt_secret, OCTOPUS_SECURITY__ENCRYPTION_KEY to
+      # security.encryption_key, etc.
+      # OCTOPUS_AUTH__JWT_SECRET: ""  # persistent JWT signing secret
+      # OCTOPUS_SECURITY__ENCRYPTION_KEY: ""  # AES key for sensitive data at rest
+      # OCTOPUS_SERVER__TRUSTED_PROXIES: "172.17.0.0/16"  # For Docker bridge networks
